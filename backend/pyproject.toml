@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "issues-devin-backend"
+version = "0.1.0"
+description = "FastAPI backend for Issues Devin Integration"
+authors = ["Devin AI <devin-ai-integration[bot]@users.noreply.github.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+fastapi = "^0.104.0"
+uvicorn = {extras = ["standard"], version = "^0.24.0"}
+python-dotenv = "^1.0.0"
+httpx = "^0.25.0"
+sqlalchemy = "^2.0.0"
+pydantic = "^2.0.0"
+
+[tool.poetry.group.dev.dependencies]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+start = "uvicorn main:app --host 0.0.0.0 --port 8000"
