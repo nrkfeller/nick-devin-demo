@@ -31,6 +31,7 @@ export interface DevinSession {
 }
 
 export interface IssueFilters {
+  repo?: string;
   state: 'open' | 'closed' | 'all';
   labels?: string;
   assignee?: string;

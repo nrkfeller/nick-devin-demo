@@ -58,10 +58,12 @@ export class APIClient {
   }
 
   async getIssues(filters?: {
+    repo?: string;
     state?: string;
     labels?: string;
   }): Promise<GitHubIssue[]> {
     const params = new URLSearchParams();
+    if (filters?.repo) params.append('repo', filters.repo);
     if (filters?.state) params.append('state', filters.state);
     if (filters?.labels) params.append('labels', filters.labels);
     
@@ -75,6 +77,7 @@ export class APIClient {
     issue_number: number;
     issue_title: string;
     issue_body?: string;
+    repo?: string;
   }): Promise<DevinSession> {
     return this.request<DevinSession>('/scope-issue', {
       method: 'POST',
@@ -84,6 +87,7 @@ export class APIClient {
 
   async resolveIssue(request: {
     issue_number: number;
+    repo?: string;
   }): Promise<DevinSession> {
     return this.request<DevinSession>('/resolve-issue', {
       method: 'POST',

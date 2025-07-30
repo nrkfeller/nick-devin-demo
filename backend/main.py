@@ -59,11 +59,19 @@ class DevinScopeRequest(BaseModel):
     issue_number: int
     issue_title: str
     issue_body: Optional[str]
+    repo: Optional[str] = "google/meridian"
 
 class DevinResolveRequest(BaseModel):
     issue_number: int
+    repo: Optional[str] = "google/meridian"
 
-async def get_github_issues(state: str = "open", labels: Optional[str] = None):
+async def get_github_issues(repo: str, state: str = "open", labels: Optional[str] = None):
+    if "/" not in repo or len(repo.split("/")) != 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Repository must be in format 'owner/repo'"
+        )
+    
     headers = {
         "Authorization": f"token {GITHUB_TOKEN}",
         "Accept": "application/vnd.github.v3+json"
@@ -75,7 +83,7 @@ async def get_github_issues(state: str = "open", labels: Optional[str] = None):
     
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"https://api.github.com/repos/{GITHUB_REPO}/issues",
+            f"https://api.github.com/repos/{repo}/issues",
             headers=headers,
             params=params
         )
@@ -85,7 +93,7 @@ async def get_github_issues(state: str = "open", labels: Optional[str] = None):
         
         return response.json()
 
-async def post_github_comment(issue_number: int, comment: str):
+async def post_github_comment(issue_number: int, comment: str, repo: str = "google/meridian"):
     headers = {
         "Authorization": f"token {GITHUB_TOKEN}",
         "Accept": "application/vnd.github.v3+json"
@@ -93,7 +101,7 @@ async def post_github_comment(issue_number: int, comment: str):
     
     async with httpx.AsyncClient() as client:
         response = await client.post(
-            f"https://api.github.com/repos/{GITHUB_REPO}/issues/{issue_number}/comments",
+            f"https://api.github.com/repos/{repo}/issues/{issue_number}/comments",
             headers=headers,
             json={"body": comment}
         )
@@ -132,9 +140,9 @@ async def root():
     return {"message": "GitHub Issues Devin Integration API"}
 
 @app.get("/issues", response_model=List[GitHubIssue])
-async def get_issues(state: str = "open", labels: Optional[str] = None):
-    """Get GitHub issues from the configured repository"""
-    issues = await get_github_issues(state, labels)
+async def get_issues(repo: str = "google/meridian", state: str = "open", labels: Optional[str] = None):
+    """Get GitHub issues from the specified repository"""
+    issues = await get_github_issues(repo, state, labels)
     return issues
 
 @app.post("/scope-issue")
@@ -170,7 +178,7 @@ async def scope_issue(request: DevinScopeRequest):
         conn.close()
         
         comment = f"🤖 **Devin AI Analysis Started**\n\nI'm analyzing this issue to provide a detailed action plan and confidence score. Session ID: `{session_id}`"
-        await post_github_comment(request.issue_number, comment)
+        await post_github_comment(request.issue_number, comment, request.repo)
         
         return {
             "session_id": session_id,
@@ -192,7 +200,7 @@ async def resolve_issue(request: DevinResolveRequest):
     
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"https://api.github.com/repos/{GITHUB_REPO}/issues/{request.issue_number}",
+            f"https://api.github.com/repos/{request.repo}/issues/{request.issue_number}",
             headers=headers
         )
         
@@ -204,7 +212,7 @@ async def resolve_issue(request: DevinResolveRequest):
     resolve_message = f"""
     Please resolve this GitHub issue by implementing the necessary changes:
     
-    Repository: {GITHUB_REPO}
+    Repository: {request.repo}
     Issue #{request.issue_number}: {issue_data['title']}
     Description: {issue_data['body'] or "No description provided"}
     
@@ -231,7 +239,7 @@ async def resolve_issue(request: DevinResolveRequest):
         conn.close()
         
         comment = f"🚀 **Devin AI Resolution Started**\n\nI'm working on resolving this issue. I'll provide regular updates as I make progress.\n\nSession ID: `{session_id}`"
-        await post_github_comment(request.issue_number, comment)
+        await post_github_comment(request.issue_number, comment, request.repo)
         
         return {
             "session_id": session_id,
