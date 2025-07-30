@@ -4,9 +4,20 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export class APIClient {
   private baseURL: string;
+  private authHeader?: string;
 
   constructor(baseURL: string = API_BASE_URL) {
-    this.baseURL = baseURL;
+    try {
+      const url = new URL(baseURL);
+      if (url.username && url.password) {
+        this.authHeader = `Basic ${btoa(`${url.username}:${url.password}`)}`;
+        this.baseURL = `${url.protocol}//${url.host}${url.pathname === '/' ? '' : url.pathname}`;
+      } else {
+        this.baseURL = baseURL;
+      }
+    } catch {
+      this.baseURL = baseURL;
+    }
   }
 
   private async request<T>(
@@ -15,11 +26,17 @@ export class APIClient {
   ): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
     
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...options.headers as Record<string, string>,
+    };
+
+    if (this.authHeader) {
+      headers['Authorization'] = this.authHeader;
+    }
+    
     const config: RequestInit = {
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
+      headers,
       ...options,
     };
 
