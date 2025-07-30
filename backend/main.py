@@ -91,7 +91,10 @@ async def get_github_issues(repo: str, state: str = "open", labels: Optional[str
         if response.status_code != 200:
             raise HTTPException(status_code=response.status_code, detail="Failed to fetch GitHub issues")
         
-        return response.json()
+        issues_data = response.json()
+        filtered_issues = [issue for issue in issues_data if 'pull_request' not in issue]
+        
+        return filtered_issues
 
 async def post_github_comment(issue_number: int, comment: str, repo: str = "google/meridian"):
     headers = {
