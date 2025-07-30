@@ -11,7 +11,7 @@ export default function Dashboard() {
   const [issues, setIssues] = useState<GitHubIssue[]>([]);
   const [sessions, setSessions] = useState<DevinSession[]>([]);
   const [filters, setFilters] = useState<IssueFiltersType>({
-    repo: 'google/meridian',
+    repo: 'GoogleCloudPlatform/marketing-analytics-jumpstart',
     state: 'open',
     search: '',
   });
