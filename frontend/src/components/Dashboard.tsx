@@ -177,6 +177,7 @@ export default function Dashboard() {
         <div className="bg-white shadow rounded-lg">
           <IssueList
             issues={issues}
+            sessions={sessions}
             loading={loading}
             onScopeIssue={handleScopeIssue}
             onResolveIssue={handleResolveIssue}

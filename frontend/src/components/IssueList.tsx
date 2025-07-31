@@ -1,17 +1,18 @@
 'use client';
 
 import React from 'react';
-import { GitHubIssue } from '@/lib/types';
+import { GitHubIssue, DevinSession } from '@/lib/types';
 import IssueCard from './IssueCard';
 
 interface IssueListProps {
   issues: GitHubIssue[];
+  sessions: DevinSession[];
   loading: boolean;
   onScopeIssue: (issue: GitHubIssue) => void;
   onResolveIssue: (issue: GitHubIssue) => void;
 }
 
-export default function IssueList({ issues, loading, onScopeIssue, onResolveIssue }: IssueListProps) {
+export default function IssueList({ issues, sessions, loading, onScopeIssue, onResolveIssue }: IssueListProps) {
   if (loading) {
     return (
       <div className="p-8">
@@ -45,6 +46,7 @@ export default function IssueList({ issues, loading, onScopeIssue, onResolveIssu
         <IssueCard
           key={issue.number}
           issue={issue}
+          sessions={sessions}
           onScopeIssue={onScopeIssue}
           onResolveIssue={onResolveIssue}
         />
