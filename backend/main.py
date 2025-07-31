@@ -30,7 +30,11 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 DEVIN_API_KEY = os.getenv("DEVIN_API_KEY")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "google/meridian")
 
-devin_client = DevinClient(DEVIN_API_KEY)
+devin_client = None
+if DEVIN_API_KEY:
+    devin_client = DevinClient(DEVIN_API_KEY)
+else:
+    logging.warning("DEVIN_API_KEY not provided - Devin integration features will be disabled")
 
 def init_db():
     conn = sqlite3.connect("issues.db")
@@ -73,6 +77,60 @@ class DevinResolveRequest(BaseModel):
     repo: Optional[str] = "google/meridian"
 
 async def get_github_issues(repo: str, state: str = "open", labels: Optional[str] = None):
+    if not GITHUB_TOKEN:
+        logging.warning("GITHUB_TOKEN not provided - attempting to fetch public issues without authentication (rate limited)")
+        try:
+            headers = {
+                "Accept": "application/vnd.github.v3+json",
+                "User-Agent": "GitHub-Issues-Devin-Integration"
+            }
+            
+            params = {"state": state}
+            if labels:
+                params["labels"] = labels
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"https://api.github.com/repos/{repo}/issues",
+                    headers=headers,
+                    params=params
+                )
+                
+                if response.status_code == 200:
+                    issues_data = response.json()
+                    filtered_issues = [issue for issue in issues_data if 'pull_request' not in issue]
+                    logging.info(f"Successfully fetched {len(filtered_issues)} public issues from {repo}")
+                    return filtered_issues
+                else:
+                    logging.warning(f"Failed to fetch public issues (status {response.status_code}), falling back to mock data")
+        except Exception as e:
+            logging.warning(f"Error fetching public issues: {e}, falling back to mock data")
+        
+        return [
+            {
+                "number": 1,
+                "title": "Sample Issue: Add user authentication",
+                "body": "This is a sample issue for local development. In production, this would fetch real GitHub issues.",
+                "state": "open",
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-01T00:00:00Z",
+                "html_url": "https://github.com/example/repo/issues/1",
+                "labels": [],
+                "assignees": []
+            },
+            {
+                "number": 2,
+                "title": "Sample Issue: Fix responsive design",
+                "body": "Another sample issue to demonstrate the interface. Real issues would be fetched from GitHub API.",
+                "state": "open",
+                "created_at": "2024-01-02T00:00:00Z",
+                "updated_at": "2024-01-02T00:00:00Z",
+                "html_url": "https://github.com/example/repo/issues/2",
+                "labels": [],
+                "assignees": []
+            }
+        ]
+    
     if "/" not in repo or len(repo.split("/")) != 2:
         raise HTTPException(
             status_code=400,
@@ -192,7 +250,8 @@ async def monitor_devin_session(session_id: str, issue_number: int, repo: str, s
             
             try:
                 session_details = await devin_client.get_session_details(session_id)
-                status = session_details.get("status_enum", "").lower()
+                status_enum = session_details.get("status_enum")
+                status = status_enum.lower() if status_enum else "unknown"
                 
                 logger.info(f"Session {session_id} status: {status}")
                 
@@ -263,8 +322,9 @@ Please check the [Devin session]({session_details.get('url', '#')}) for detailed
                     break
                     
                 elif status == "blocked":
-                    logger.warning(f"Session {session_id} is blocked - may need user input")
+                    logger.warning(f"Session {session_id} is blocked - continuing to monitor as it may eventually complete")
                     
+                    # Update database status but don't break - continue monitoring
                     conn = sqlite3.connect("issues.db")
                     cursor = conn.cursor()
                     cursor.execute("""
@@ -275,14 +335,19 @@ Please check the [Devin session]({session_details.get('url', '#')}) for detailed
                     conn.commit()
                     conn.close()
                     
-                    blocked_comment = f"""## ⚠️ Devin Session Blocked
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT COUNT(*) FROM issue_sessions WHERE devin_session_id = ? AND status = 'blocked'", (session_id,))
+                    blocked_count = cursor.fetchone()[0]
+                    conn.close()
+                    
+                    if blocked_count == 1:  # First time being blocked
+                        blocked_comment = f"""## ⚠️ Devin Session Status Update
 
-The Devin session `{session_id}` is currently blocked and may require user input or intervention.
+The Devin session `{session_id}` is currently blocked and may require user input. I'll continue monitoring for completion.
 
 Please check the [Devin session]({session_details.get('url', '#')}) to see what input is needed."""
-                    
-                    await post_github_comment(issue_number, blocked_comment, repo)
-                    break
+                        
+                        await post_github_comment(issue_number, blocked_comment, repo)
                 
                 await asyncio.sleep(poll_interval)
                 
@@ -322,6 +387,12 @@ async def get_issues(repo: str = "google/meridian", state: str = "open", labels:
 @app.post("/scope-issue")
 async def scope_issue(request: DevinScopeRequest, background_tasks: BackgroundTasks):
     """Have Devin analyze and scope an issue"""
+    
+    if not devin_client:
+        raise HTTPException(
+            status_code=503, 
+            detail="Devin integration is not configured. Please set the DEVIN_API_KEY environment variable to enable issue scoping."
+        )
     
     scope_message = f"""
 Please analyze this GitHub issue and provide:
@@ -388,6 +459,12 @@ I'll post the results here once the analysis is complete (typically within 10-30
 @app.post("/resolve-issue")
 async def resolve_issue(request: DevinResolveRequest, background_tasks: BackgroundTasks):
     """Have Devin attempt to resolve an issue"""
+    
+    if not devin_client:
+        raise HTTPException(
+            status_code=503, 
+            detail="Devin integration is not configured. Please set the DEVIN_API_KEY environment variable to enable issue resolution."
+        )
     
     headers = {
         "Authorization": f"token {GITHUB_TOKEN}",

@@ -111,7 +111,8 @@ class DevinClient:
         while True:
             try:
                 session_details = await self.get_session_details(session_id)
-                status = session_details.get("status_enum", "").lower()
+                status_enum = session_details.get("status_enum")
+                status = status_enum.lower() if status_enum else "unknown"
                 
                 if status in ["finished", "expired"]:
                     logger.info(f"Devin session {session_id} completed with status: {status}")
