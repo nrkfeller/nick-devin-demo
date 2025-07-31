@@ -39,6 +39,7 @@ pip install -r requirements.txt
 # Set environment variables
 export GITHUB_TOKEN="your_github_token"
 export DEVIN_API_KEY="your_devin_api_key"
+export DISABLE_BLOCKED_COMMENTS="false"  # Optional: set to "true" to disable blocked session warning comments
 
 # Start server
 python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
@@ -68,6 +69,12 @@ npm run dev
 ## Deployment
 
 The application is configured for deployment on Fly.io (backend) and supports static export for frontend hosting.
+
+## Environment Variables
+
+- `GITHUB_TOKEN`: GitHub personal access token for API access
+- `DEVIN_API_KEY`: Devin API key for session management  
+- `DISABLE_BLOCKED_COMMENTS`: Set to "true", "1", or "yes" to disable warning comments when sessions become blocked (optional, defaults to posting comments)
 
 ## Contributing
 

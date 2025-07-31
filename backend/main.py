@@ -395,7 +395,7 @@ Please check the [Devin session]({session_details.get('url', '#')}) for detailed
                     blocked_count = cursor.fetchone()[0]
                     conn.close()
                     
-                    if blocked_count == 1:
+                    if blocked_count == 1 and not os.getenv("DISABLE_BLOCKED_COMMENTS", "").lower() in ["true", "1", "yes"]:
                         blocked_comment = f"""## ⚠️ Devin Session Status Update
 
 The Devin session `{session_id}` is currently blocked and may require user input. I'll continue monitoring for completion.
