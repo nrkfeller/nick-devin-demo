@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from typing import List, Optional
 import httpx
@@ -13,10 +14,35 @@ import logging
 from devin_client import DevinClient
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-app = FastAPI(title="GitHub Issues Devin Integration", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Starting up - checking for existing incomplete sessions to monitor")
+    
+    conn = sqlite3.connect("issues.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT devin_session_id, issue_number, issue_title, status 
+        FROM issue_sessions 
+        WHERE status IN ('scoping', 'resolving', 'blocked')
+    """)
+    incomplete_sessions = cursor.fetchall()
+    conn.close()
+    
+    for session_id, issue_number, issue_title, status in incomplete_sessions:
+        logger.info(f"Starting monitoring for existing session {session_id} (status: {status})")
+        repo = "GoogleCloudPlatform/marketing-analytics-jumpstart"
+        session_type = "scoping" if status in ['scoping', 'blocked'] else "resolving"
+        
+        asyncio.create_task(monitor_devin_session(session_id, issue_number, repo, session_type))
+    
+    yield
+    logger.info("Shutting down")
+
+app = FastAPI(title="GitHub Issues Devin Integration", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -56,6 +82,7 @@ def init_db():
     conn.close()
 
 init_db()
+
 
 class GitHubIssue(BaseModel):
     number: int
@@ -322,9 +349,39 @@ Please check the [Devin session]({session_details.get('url', '#')}) for detailed
                     break
                     
                 elif status == "blocked":
-                    logger.warning(f"Session {session_id} is blocked - continuing to monitor as it may eventually complete")
+                    logger.warning(f"Session {session_id} is blocked - checking for completion indicators in messages")
                     
-                    # Update database status but don't break - continue monitoring
+                    if session_type == "scoping":
+                        logger.info(f"Checking session {session_id} for completion indicators in messages")
+                        action_plan, confidence_score = devin_client.extract_action_plan_and_confidence(session_details)
+                        logger.info(f"Extraction results - Action plan: {'Found' if action_plan else 'None'}, Confidence: {confidence_score}")
+                        
+                        if action_plan and confidence_score:
+                            logger.info(f"Session {session_id} completed analysis while blocked - processing results")
+                            
+                            conn = sqlite3.connect("issues.db")
+                            cursor = conn.cursor()
+                            cursor.execute("""
+                                UPDATE issue_sessions 
+                                SET action_plan = ?, confidence_score = ?, status = 'completed', updated_at = CURRENT_TIMESTAMP
+                                WHERE devin_session_id = ?
+                            """, (action_plan, confidence_score, session_id))
+                            conn.commit()
+                            conn.close()
+                            
+                            results_comment = f"""## 🤖 Devin Analysis Results
+
+{action_plan}
+
+**Confidence Score: {confidence_score}%**
+
+---
+*Session ID: `{session_id}`*
+*Analysis completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}*"""
+                            
+                            await post_github_comment(issue_number, results_comment, repo)
+                            break
+                    
                     conn = sqlite3.connect("issues.db")
                     cursor = conn.cursor()
                     cursor.execute("""
@@ -333,14 +390,12 @@ Please check the [Devin session]({session_details.get('url', '#')}) for detailed
                         WHERE devin_session_id = ?
                     """, (session_id,))
                     conn.commit()
-                    conn.close()
                     
-                    cursor = conn.cursor()
                     cursor.execute("SELECT COUNT(*) FROM issue_sessions WHERE devin_session_id = ? AND status = 'blocked'", (session_id,))
                     blocked_count = cursor.fetchone()[0]
                     conn.close()
                     
-                    if blocked_count == 1:  # First time being blocked
+                    if blocked_count == 1:
                         blocked_comment = f"""## ⚠️ Devin Session Status Update
 
 The Devin session `{session_id}` is currently blocked and may require user input. I'll continue monitoring for completion.

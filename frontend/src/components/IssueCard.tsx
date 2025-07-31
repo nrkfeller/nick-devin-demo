@@ -1,15 +1,16 @@
 'use client';
 
 import React from 'react';
-import { GitHubIssue } from '@/lib/types';
+import { GitHubIssue, DevinSession } from '@/lib/types';
 
 interface IssueCardProps {
   issue: GitHubIssue;
+  sessions: DevinSession[];
   onScopeIssue: (issue: GitHubIssue) => void;
   onResolveIssue: (issue: GitHubIssue) => void;
 }
 
-export default function IssueCard({ issue, onScopeIssue, onResolveIssue }: IssueCardProps) {
+export default function IssueCard({ issue, sessions, onScopeIssue, onResolveIssue }: IssueCardProps) {
   const getStateColor = (state: string) => {
     return state === 'open' ? 'bg-green-100 text-green-800' : 'bg-purple-100 text-purple-800';
   };
@@ -17,6 +18,12 @@ export default function IssueCard({ issue, onScopeIssue, onResolveIssue }: Issue
   const getLabelColor = (color: string) => {
     return `#${color}`;
   };
+
+  const scopedSession = sessions.find(session => 
+    session.issue_number === issue.number && 
+    session.confidence_score && 
+    (session.status === 'completed' || session.confidence_score > 0)
+  );
 
   return (
     <div className="p-6 hover:bg-gray-50 transition-colors">
@@ -30,6 +37,11 @@ export default function IssueCard({ issue, onScopeIssue, onResolveIssue }: Issue
             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStateColor(issue.state)}`}>
               {issue.state}
             </span>
+            {scopedSession && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                Scoped, Confidence Score: {scopedSession.confidence_score}%
+              </span>
+            )}
           </div>
 
           {/* Issue Body Preview */}

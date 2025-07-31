@@ -160,13 +160,17 @@ class DevinClient:
                         if "ACTION PLAN:" in line.upper():
                             plan_started = True
                             continue
-                        elif "CONFIDENCE SCORE:" in line.upper():
+                        elif "CONFIDENCE SCORE:" in line.upper() or "CONFIDENCE:" in line.upper():
                             plan_started = False
-                            confidence_match = line.split(":")[-1].strip()
+                            confidence_text = line.split(":")[-1].strip()
                             try:
-                                confidence_score = int(confidence_match.replace("%", "").strip())
+                                import re
+                                match = re.search(r'(\d+)', confidence_text)
+                                if match:
+                                    confidence_score = int(match.group(1))
+                                    logger.info(f"Successfully extracted confidence score: {confidence_score}")
                             except (ValueError, AttributeError):
-                                pass
+                                logger.warning(f"Could not parse confidence score from: {confidence_text}")
                         elif plan_started and line.strip():
                             plan_lines.append(line.strip())
                     
